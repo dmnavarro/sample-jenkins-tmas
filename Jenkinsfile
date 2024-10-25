@@ -16,7 +16,7 @@ pipeline {
                     checkout scm
 
                     // Build image
-                    app = docker.build("fadefa88/test")
+                    app = docker.build("dmnavarro/test")
 
                     // Test image
                     app.inside {
@@ -36,9 +36,9 @@ pipeline {
             steps {
                 script {
                     // Pull the latest image to get its digest
-                    sh 'docker pull fadefa88/test:latest'
+                    sh 'docker pull dmnavarro/test:latest'
                     def digest = sh(
-                        script: "docker inspect --format='{{index .RepoDigests 0}}' fadefa88/test:latest",
+                        script: "docker inspect --format='{{index .RepoDigests 0}}' dmnavarro/test:latest",
                         returnStdout: true
                     ).trim()
                     
@@ -66,7 +66,7 @@ pipeline {
                     
                     // Execute the tmas scan command with the obtained digest
                     sh 'cat ~/.docker/config.json'
-                    sh "$TMAS_HOME/tmas scan --vulnerabilities registry:fadefa88/test@${env.IMAGE_DIGEST} --region eu-central-1"
+                    sh "$TMAS_HOME/tmas scan --vulnerabilities registry:dmnavarro/test@${env.IMAGE_DIGEST} --region eu-central-1"
                     
                     // Logout from Docker Hub
                     sh 'docker logout'
