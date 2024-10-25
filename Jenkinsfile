@@ -77,9 +77,7 @@ pipeline {
     
     post {
         success {
-            // Trigger ManifestUpdate job upon success of both pipelines
-            echo "Triggering updatemanifest job"
-            build job: 'updatemanifest', parameters: [string(name: 'DOCKERTAG', value: env.BUILD_NUMBER)]
+            echo "Pipeline Complete"
         }
     }
 }
