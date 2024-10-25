@@ -66,7 +66,7 @@ pipeline {
                     
                     // Execute the tmas scan command with the obtained digest
                     sh 'cat ~/.docker/config.json'
-                    sh "$TMAS_HOME/tmas scan --vulnerabilities registry:dmnavarro/test@${env.IMAGE_DIGEST} --region eu-central-1"
+                    sh "$TMAS_HOME/tmas scan -M -V -S registry:dmnavarro/test@${env.IMAGE_DIGEST} --region ap-southeast-1"
                     
                     // Logout from Docker Hub
                     sh 'docker logout'
