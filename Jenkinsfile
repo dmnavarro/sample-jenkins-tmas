@@ -1,12 +1,6 @@
 pipeline {
   agent any
 
-  options {
-    timestamps()
-    ansiColor('xterm')
-    // options { skipDefaultCheckout(true) } // uncomment if you remove the default checkout
-  }
-
   environment {
     IMAGE_REPO  = 'dmnavarro/sample-jenkins-tmas'
     AWS_REGION  = 'ap-southeast-1'
@@ -96,7 +90,7 @@ pipeline {
             aws eks update-kubeconfig --name "${EKS_CLUSTER}" --region "${AWS_REGION}"
 
             # Ensure base resources exist (Namespace/Service/Deployment with dummy digest)
-            kubectl apply -f web-app.yaml
+            kubectl apply -f k8s/web-app.yaml
 
             # Patch Deployment to the EXACT image digest
             kubectl -n "${K8S_NS}" set image deployment/${DEPLOY_NAME} \
