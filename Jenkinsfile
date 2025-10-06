@@ -51,22 +51,23 @@ pipeline {
 
     stage('TMAS Scan (by digest)') {
       steps {
-          sh '''
-            set -euo pipefail
-
-            mkdir -p "${TMAS_HOME}"
-            curl -sSL https://cli.artifactscan.cloudone.trendmicro.com/tmas-cli/latest/tmas-cli_Linux_x86_64.tar.gz \
-              | tar xz -C "${TMAS_HOME}"
-
-            # If TMAS needs registry auth, uncomment the next three lines and ensure DOCKER creds exist in env
-            # echo "$DOCKER_PASSWORD" | docker login -u "$DOCKER_USERNAME" --password-stdin
-            # "${TMAS_HOME}/tmas" scan -M -V -S registry:${IMAGE_REPO}@${IMAGE_DIGEST} --region ${AWS_REGION}
-            # docker logout
-
-            # Most setups can scan public images without docker login:
-            "${TMAS_HOME}/tmas" scan -M -V -S registry:${IMAGE_REPO}@${IMAGE_DIGEST} --region ${AWS_REGION}
-          '''
-        
+        script {
+            // Login to Docker Hub
+            withCredentials([usernamePassword(credentialsId: 'github-pat', passwordVariable: 'DOCKER_PASSWORD', usernameVariable: 'DOCKER_USERNAME')]) {
+                sh 'echo $DOCKER_PASSWORD | docker login -u $DOCKER_USERNAME --password-stdin'
+            }
+            
+            // Install TMAS
+            sh "mkdir -p $TMAS_HOME"
+            sh "curl -L https://cli.artifactscan.cloudone.trendmicro.com/tmas-cli/latest/tmas-cli_Linux_x86_64.tar.gz | tar xz -C $TMAS_HOME"
+            
+            // Execute the tmas scan command with the obtained digest
+            //sh 'cat ~/.docker/config.json'
+            sh "$TMAS_HOME/tmas scan -M -V -S registry:${IMAGE_REPO}@${IMAGE_DIGEST} --region ap-southeast-1"
+            
+            // Logout from Docker Hub
+            sh 'docker logout'
+        }
       }
     }
 
