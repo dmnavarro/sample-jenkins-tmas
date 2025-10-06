@@ -76,7 +76,7 @@ pipeline {
             aws eks update-kubeconfig --name "${EKS_CLUSTER}" --region "${AWS_REGION}"
 
             # Ensure base resources exist (Namespace/Service/Deployment with dummy digest)
-            kubectl apply -f k8s/web-app.yaml
+            kubectl apply -f web-app.yaml
 
             # Patch Deployment to the EXACT image digest
             kubectl -n "${K8S_NS}" set image deployment/${DEPLOY_NAME} \
