@@ -28,6 +28,20 @@ pipeline {
                         app.push("${env.BUILD_NUMBER}")
                         app.push("latest")
                     }
+
+                    script {
+                      def repo = 'dmnavarro/sample-jenkins-tmas'
+                      def tag  = "${env.BUILD_NUMBER}"     // or whatever tag you actually pushed
+                    
+                      sh """
+                        set -euo pipefail
+                        docker pull ${repo}:${tag}
+                        DIGEST=\$(docker inspect --format='{{index .RepoDigests 0}}' ${repo}:${tag} | cut -d'@' -f2)
+                        echo "\$DIGEST" > image.digest
+                      """
+                      env.IMAGE_DIGEST = readFile('image.digest').trim()
+                      echo "Captured digest: ${env.IMAGE_DIGEST}"
+                    }
                 }
             }
         }
@@ -65,7 +79,7 @@ pipeline {
                     sh "curl -L https://cli.artifactscan.cloudone.trendmicro.com/tmas-cli/latest/tmas-cli_Linux_x86_64.tar.gz | tar xz -C $TMAS_HOME"
                     
                     // Execute the tmas scan command with the obtained digest
-                    sh 'cat ~/.docker/config.json'
+                    //sh 'cat ~/.docker/config.json'
                     sh "$TMAS_HOME/tmas scan -M -V -S registry:dmnavarro/sample-jenkins-tmas@${env.IMAGE_DIGEST} --region ap-southeast-1"
                     
                     // Logout from Docker Hub
@@ -84,35 +98,29 @@ pipeline {
           }
           steps {
             withCredentials([[$class: 'AmazonWebServicesCredentialsBinding', credentialsId: 'aws-creds']]) {
-              script {
-                // Assuming you already got the digest earlier like this:
-                def digest = sh(
-                  script: "docker inspect --format='{{index .RepoDigests 0}}' ${IMAGE_REPO}:${BUILD_NUMBER} | cut -d'@' -f2",
-                  returnStdout: true
-                ).trim()
-                env.IMAGE_DIGEST = digest
-                echo "Deploying image digest: ${digest}"
-        
-                sh """
-                  set -euo pipefail
-        
-                  aws eks update-kubeconfig --name ${EKS_CLUSTER} --region ${AWS_REGION}
-        
-                  # Apply the base manifest (creates NS/Service if not yet)
-                  kubectl apply -f web-app.yaml
-        
-                  # Patch the deployment image with digest reference
-                  kubectl -n ${K8S_NS} set image deployment/${DEPLOY_NAME} ${DEPLOY_NAME}=${IMAGE_REPO}@${digest}
-        
-                  # Wait for rollout
-                  kubectl -n ${K8S_NS} rollout status deployment/${DEPLOY_NAME} --timeout=5m
-                  kubectl -n ${K8S_NS} get svc ${DEPLOY_NAME}
-                """
-              }
+              sh '''
+                set -euo pipefail
+            
+                # Ensure kubectl exists (AL2023 x86_64, EKS 1.33)
+                if ! command -v kubectl >/dev/null 2>&1; then
+                  curl -sSLo kubectl curl -O https://s3.us-west-2.amazonaws.com/amazon-eks/1.33.5/2025-09-19/bin/linux/amd64/kubectl
+                  chmod +x kubectl
+                  sudo mv kubectl /usr/local/bin/ || { echo "No sudo? Using local kubectl"; mv kubectl ./kubectl; export PATH="$PWD:$PATH"; }
+                fi
+            
+                aws eks update-kubeconfig --name "${EKS_CLUSTER}" --region "${AWS_REGION}"
+            
+                # Apply base manifest (creates NS/Service/Deployment with dummy digest on first run)
+                kubectl apply -f web-app.yaml
+            
+                # Patch the deployment to the EXACT image by digest you captured earlier
+                kubectl -n "${K8S_NS}" set image deployment/${DEPLOY_NAME} ${DEPLOY_NAME}=${IMAGE_REPO}@${IMAGE_DIGEST}
+            
+                kubectl -n "${K8S_NS}" rollout status deployment/${DEPLOY_NAME} --timeout=5m
+                kubectl -n "${K8S_NS}" get svc ${DEPLOY_NAME}
+              '''
             }
-          }
         }
-
     }
     
     post {
