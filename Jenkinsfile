@@ -5,7 +5,7 @@ pipeline {
     IMAGE_REPO  = 'dmnavarro/sample-jenkins-tmas'
     AWS_REGION  = 'ap-southeast-1'
     AWS_DEFAULT_REGION = 'ap-southeast-1'
-    EKS_CLUSTER = 'drna_demo_c'   // <--- change if needed
+    EKS_CLUSTER = 'drna_demo_c'
     K8S_NS      = 'web-app'
     DEPLOY_NAME = 'web-app'
     TMAS_API_KEY = credentials('TMAS_API_KEY')
@@ -74,8 +74,6 @@ pipeline {
       steps {
         withCredentials([[$class: 'AmazonWebServicesCredentialsBinding', credentialsId: 'aws-creds']]) {
           sh '''
-            aws configure list
-            aws sts get-caller-identity
             aws eks update-kubeconfig --name "${EKS_CLUSTER}" --region "${AWS_REGION}"
 
             # Ensure base resources exist (Namespace/Service/Deployment with dummy digest)
