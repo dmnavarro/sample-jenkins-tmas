@@ -1,131 +1,126 @@
 pipeline {
-    agent any
-    
-    environment {
-        TMAS_API_KEY = credentials('TMAS_API_KEY')
-        TMAS_HOME = "$WORKSPACE/tmas"
+  agent any
+
+  options {
+    timestamps()
+    ansiColor('xterm')
+    // options { skipDefaultCheckout(true) } // uncomment if you remove the default checkout
+  }
+
+  environment {
+    IMAGE_REPO  = 'dmnavarro/sample-jenkins-tmas'
+    AWS_REGION  = 'ap-southeast-1'
+    EKS_CLUSTER = 'drna_demo_c'   // <--- change if needed
+    K8S_NS      = 'web-app'
+    DEPLOY_NAME = 'web-app'
+    TMAS_HOME   = "${WORKSPACE}/tmas"
+  }
+
+  stages {
+
+    stage('Build & Test Image') {
+      steps {
+        sh '''
+          set -euo pipefail
+          docker build -t ${IMAGE_REPO} .
+          docker run --rm ${IMAGE_REPO} /bin/sh -c 'echo Tests passed'
+        '''
+      }
     }
-    
-    stages {
-        stage('Build and Test Image') {
-            steps {
-                script {
-                    def app
 
-                    // Clone repository
-                    checkout scm
-
-                    // Build image
-                    app = docker.build("dmnavarro/sample-jenkins-tmas")
-
-                    // Test image
-                    app.inside {
-                        sh 'echo "Tests passed"'
-                    }
-
-                    // Push image with build number and latest tag
-                    docker.withRegistry('https://registry.hub.docker.com', 'docker') {
-                        app.push("${env.BUILD_NUMBER}")
-                        app.push("latest")
-                    }
-
-                    script {
-                      def repo = 'dmnavarro/sample-jenkins-tmas'
-                      def tag  = "${env.BUILD_NUMBER}"     // or whatever tag you actually pushed
-                    
-                      sh """
-                        set -euo pipefail
-                        docker pull ${repo}:${tag}
-                        DIGEST=\$(docker inspect --format='{{index .RepoDigests 0}}' ${repo}:${tag} | cut -d'@' -f2)
-                        echo "\$DIGEST" > image.digest
-                      """
-                      env.IMAGE_DIGEST = readFile('image.digest').trim()
-                      echo "Captured digest: ${env.IMAGE_DIGEST}"
-                    }
-                }
-            }
+    stage('Push Image (BUILD_NUMBER tag)') {
+      steps {
+        withDockerRegistry([url: 'https://index.docker.io/v1/', credentialsId: 'docker']) {
+          sh '''
+            set -euo pipefail
+            docker tag ${IMAGE_REPO} ${IMAGE_REPO}:${BUILD_NUMBER}
+            docker push ${IMAGE_REPO}:${BUILD_NUMBER}
+          '''
         }
-        
-        stage('Get Image Digest') {
-            steps {
-                script {
-                    // Pull the latest image to get its digest
-                    sh 'docker pull dmnavarro/sample-jenkins-tmas:latest'
-                    def digest = sh(
-                        script: "docker inspect --format='{{index .RepoDigests 0}}' dmnavarro/sample-jenkins-tmas:latest",
-                        returnStdout: true
-                    ).trim()
-                    
-                    // Extract only the SHA part
-                    def sha = digest.split('@')[1]
-                    echo "Image digest: ${sha}"
-                    
-                    // Save the digest in an environment variable for subsequent steps
-                    env.IMAGE_DIGEST = sha
-                }
-            }
-        }
-        
-        stage('TMAS Scan') {
-            steps {
-                script {
-                    // Login to Docker Hub
-                    withCredentials([usernamePassword(credentialsId: 'github-pat', passwordVariable: 'DOCKER_PASSWORD', usernameVariable: 'DOCKER_USERNAME')]) {
-                        sh 'echo $DOCKER_PASSWORD | docker login -u $DOCKER_USERNAME --password-stdin'
-                    }
-                    
-                    // Install TMAS
-                    sh "mkdir -p $TMAS_HOME"
-                    sh "curl -L https://cli.artifactscan.cloudone.trendmicro.com/tmas-cli/latest/tmas-cli_Linux_x86_64.tar.gz | tar xz -C $TMAS_HOME"
-                    
-                    // Execute the tmas scan command with the obtained digest
-                    //sh 'cat ~/.docker/config.json'
-                    sh "$TMAS_HOME/tmas scan -M -V -S registry:dmnavarro/sample-jenkins-tmas@${env.IMAGE_DIGEST} --region ap-southeast-1"
-                    
-                    // Logout from Docker Hub
-                    sh 'docker logout'
-                }
-            }
-        }
-
-        stage('Deploy to EKS') {
-          environment {
-            AWS_REGION   = 'ap-southeast-1'
-            EKS_CLUSTER  = 'drna_demo_c'
-            K8S_NS       = 'default'
-            DEPLOY_NAME  = 'web-app'
-            IMAGE_REPO   = 'dmnavarro/sample-jenkins-tmas'
-          }
-          steps {
-            withCredentials([[$class: 'AmazonWebServicesCredentialsBinding', credentialsId: 'aws-creds']]) {
-              sh '''
-                set -euo pipefail
-            
-                # Ensure kubectl exists (AL2023 x86_64, EKS 1.33)
-                if ! command -v kubectl >/dev/null 2>&1; then
-                  curl -sSLo kubectl curl -O https://s3.us-west-2.amazonaws.com/amazon-eks/1.33.5/2025-09-19/bin/linux/amd64/kubectl
-                  chmod +x kubectl
-                  sudo mv kubectl /usr/local/bin/ || { echo "No sudo? Using local kubectl"; mv kubectl ./kubectl; export PATH="$PWD:$PATH"; }
-                fi
-            
-                aws eks update-kubeconfig --name "${EKS_CLUSTER}" --region "${AWS_REGION}"
-            
-                # Apply base manifest (creates NS/Service/Deployment with dummy digest on first run)
-                kubectl apply -f web-app.yaml
-            
-                # Patch the deployment to the EXACT image by digest you captured earlier
-                kubectl -n "${K8S_NS}" set image deployment/${DEPLOY_NAME} ${DEPLOY_NAME}=${IMAGE_REPO}@${IMAGE_DIGEST}
-            
-                kubectl -n "${K8S_NS}" rollout status deployment/${DEPLOY_NAME} --timeout=5m
-                kubectl -n "${K8S_NS}" get svc ${DEPLOY_NAME}
-              '''
-            }
-        }
+      }
     }
-    
-    post {
-        success {
-            echo "Pipeline Complete"
+
+    stage('Capture Image Digest') {
+      steps {
+        script {
+          sh '''
+            set -euo pipefail
+            docker pull ${IMAGE_REPO}:${BUILD_NUMBER}
+            DIGEST=$(docker inspect --format='{{index .RepoDigests 0}}' ${IMAGE_REPO}:${BUILD_NUMBER} | cut -d'@' -f2)
+            echo "$DIGEST" > image.digest
+          '''
+          env.IMAGE_DIGEST = readFile('image.digest').trim()
+          echo "Captured digest: ${env.IMAGE_DIGEST}"
         }
+      }
     }
-}
+
+    stage('TMAS Scan (by digest)') {
+      steps {
+        withCredentials([usernamePassword(
+          credentialsId: 'tmas-api',
+          usernameVariable: 'TMAS_API_KEY',
+          passwordVariable: 'TMAS_API_KEY_PSW'
+        )]) {
+          sh '''
+            set -euo pipefail
+
+            mkdir -p "${TMAS_HOME}"
+            curl -sSL https://cli.artifactscan.cloudone.trendmicro.com/tmas-cli/latest/tmas-cli_Linux_x86_64.tar.gz \
+              | tar xz -C "${TMAS_HOME}"
+
+            # If TMAS needs registry auth, uncomment the next three lines and ensure DOCKER creds exist in env
+            # echo "$DOCKER_PASSWORD" | docker login -u "$DOCKER_USERNAME" --password-stdin
+            # "${TMAS_HOME}/tmas" scan -M -V -S registry:${IMAGE_REPO}@${IMAGE_DIGEST} --region ${AWS_REGION}
+            # docker logout
+
+            # Most setups can scan public images without docker login:
+            "${TMAS_HOME}/tmas" scan -M -V -S registry:${IMAGE_REPO}@${IMAGE_DIGEST} --region ${AWS_REGION}
+          '''
+        }
+      }
+    }
+
+    stage('Deploy to EKS (by digest)') {
+      steps {
+        withCredentials([[$class: 'AmazonWebServicesCredentialsBinding', credentialsId: 'aws-creds']]) {
+          sh '''
+            set -euo pipefail
+
+            if ! command -v kubectl >/dev/null 2>&1; then
+              curl -sSLo kubectl https://amazon-eks.s3.us-west-2.amazonaws.com/1.33.0/2024-09-10/bin/linux/amd64/kubectl
+              chmod +x kubectl
+              sudo mv kubectl /usr/local/bin/ 2>/dev/null || { mv kubectl ./kubectl; export PATH="$PWD:$PATH"; }
+            fi
+
+            aws eks update-kubeconfig --name "${EKS_CLUSTER}" --region "${AWS_REGION}"
+
+            # Ensure base resources exist (Namespace/Service/Deployment with dummy digest)
+            kubectl apply -f web-app.yaml
+
+            # Patch Deployment to the EXACT image digest
+            kubectl -n "${K8S_NS}" set image deployment/${DEPLOY_NAME} \
+              ${DEPLOY_NAME}=${IMAGE_REPO}@${IMAGE_DIGEST}
+
+            kubectl -n "${K8S_NS}" rollout status deployment/${DEPLOY_NAME} --timeout=5m
+            kubectl -n "${K8S_NS}" get svc ${DEPLOY_NAME} -o wide
+          '''
+        }
+      }
+    }
+
+  } // end stages
+
+  post {
+    success {
+      echo "Built, pushed, scanned and deployed ${IMAGE_REPO}@${IMAGE_DIGEST}"
+    }
+    failure {
+      echo "Pipeline failed — see logs above."
+    }
+    always {
+      sh 'docker logout 2>/dev/null || true'
+    }
+  }
+
+} // end pipeline
