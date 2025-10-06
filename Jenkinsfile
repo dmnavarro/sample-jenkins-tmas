@@ -51,11 +51,9 @@ pipeline {
 
     stage('TMAS Scan (by digest)') {
       steps {
-        withCredentials([usernamePassword(
-          credentialsId: 'tmas-api',
-          usernameVariable: 'TMAS_API_KEY',
-          passwordVariable: 'TMAS_API_KEY_PSW'
-        )]) {
+        withCredentials([usernamePassword(credentialsId: 'github-pat', passwordVariable: 'DOCKER_PASSWORD', usernameVariable: 'DOCKER_USERNAME')]) {
+                        sh 'echo $DOCKER_PASSWORD | docker login -u $DOCKER_USERNAME --password-stdin'
+                    } {
           sh '''
             set -euo pipefail
 
