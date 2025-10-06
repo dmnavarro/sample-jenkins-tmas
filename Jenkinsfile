@@ -7,6 +7,7 @@ pipeline {
     EKS_CLUSTER = 'drna_demo_c'   // <--- change if needed
     K8S_NS      = 'web-app'
     DEPLOY_NAME = 'web-app'
+    TMAS_API_KEY = credentials('TMAS_API_KEY')
     TMAS_HOME   = "${WORKSPACE}/tmas"
   }
 
