@@ -16,7 +16,7 @@ pipeline {
                     checkout scm
 
                     // Build image
-                    app = docker.build("dmnavarro/test")
+                    app = docker.build("dmnavarro/sample-jenkins-tmas")
 
                     // Test image
                     app.inside {
@@ -36,9 +36,9 @@ pipeline {
             steps {
                 script {
                     // Pull the latest image to get its digest
-                    sh 'docker pull dmnavarro/test:latest'
+                    sh 'docker pull dmnavarro/sample-jenkins-tmas:latest'
                     def digest = sh(
-                        script: "docker inspect --format='{{index .RepoDigests 0}}' dmnavarro/test:latest",
+                        script: "docker inspect --format='{{index .RepoDigests 0}}' dmnavarro/sample-jenkins-tmas:latest",
                         returnStdout: true
                     ).trim()
                     
@@ -66,7 +66,7 @@ pipeline {
                     
                     // Execute the tmas scan command with the obtained digest
                     sh 'cat ~/.docker/config.json'
-                    sh "$TMAS_HOME/tmas scan -M -V -S registry:dmnavarro/test@${env.IMAGE_DIGEST} --region ap-southeast-1"
+                    sh "$TMAS_HOME/tmas scan -M -V -S registry:dmnavarro/sample-jenkins-tmas@${env.IMAGE_DIGEST} --region ap-southeast-1"
                     
                     // Logout from Docker Hub
                     sh 'docker logout'
