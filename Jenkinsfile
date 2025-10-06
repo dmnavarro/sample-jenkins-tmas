@@ -51,9 +51,6 @@ pipeline {
 
     stage('TMAS Scan (by digest)') {
       steps {
-        withCredentials([usernamePassword(credentialsId: 'github-pat', passwordVariable: 'DOCKER_PASSWORD', usernameVariable: 'DOCKER_USERNAME')]) {
-                        sh 'echo $DOCKER_PASSWORD | docker login -u $DOCKER_USERNAME --password-stdin'
-                    } {
           sh '''
             set -euo pipefail
 
@@ -69,7 +66,7 @@ pipeline {
             # Most setups can scan public images without docker login:
             "${TMAS_HOME}/tmas" scan -M -V -S registry:${IMAGE_REPO}@${IMAGE_DIGEST} --region ${AWS_REGION}
           '''
-        }
+        
       }
     }
 
