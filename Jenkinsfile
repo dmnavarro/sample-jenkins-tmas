@@ -14,7 +14,7 @@ pipeline {
 
   stages {
 
-    stage('Build & Test Image') {
+    stage('Build') {
       steps {
         sh '''
           docker build -t ${IMAGE_REPO} .
@@ -23,7 +23,7 @@ pipeline {
       }
     }
 
-    stage('Push Image (BUILD_NUMBER tag)') {
+    stage('Test Image') {
       steps {
         withDockerRegistry([url: 'https://index.docker.io/v1/', credentialsId: 'docker']) {
           sh '''
@@ -34,7 +34,7 @@ pipeline {
       }
     }
 
-    stage('Capture Image Digest') {
+    stage('Get Image Info') {
       steps {
         script {
           sh '''
@@ -48,7 +48,7 @@ pipeline {
       }
     }
 
-    stage('TMAS Scan (by digest)') {
+    stage('Container Image Scan') {
       steps {
         script {
             // Login to Docker Hub
@@ -70,7 +70,7 @@ pipeline {
       }
     }
 
-    stage('Deploy to EKS (by digest)') {
+    stage('Push Image & Deploy to EKS') {
       steps {
         withCredentials([[$class: 'AmazonWebServicesCredentialsBinding', credentialsId: 'aws-creds']]) {
           sh '''
