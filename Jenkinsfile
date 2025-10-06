@@ -16,7 +16,6 @@ pipeline {
     stage('Build & Test Image') {
       steps {
         sh '''
-          set -euo pipefail
           docker build -t ${IMAGE_REPO} .
           docker run --rm ${IMAGE_REPO} /bin/sh -c 'echo Tests passed'
         '''
@@ -27,7 +26,6 @@ pipeline {
       steps {
         withDockerRegistry([url: 'https://index.docker.io/v1/', credentialsId: 'docker']) {
           sh '''
-            set -euo pipefail
             docker tag ${IMAGE_REPO} ${IMAGE_REPO}:${BUILD_NUMBER}
             docker push ${IMAGE_REPO}:${BUILD_NUMBER}
           '''
@@ -39,7 +37,6 @@ pipeline {
       steps {
         script {
           sh '''
-            set -euo pipefail
             docker pull ${IMAGE_REPO}:${BUILD_NUMBER}
             DIGEST=$(docker inspect --format='{{index .RepoDigests 0}}' ${IMAGE_REPO}:${BUILD_NUMBER} | cut -d'@' -f2)
             echo "$DIGEST" > image.digest
@@ -76,14 +73,6 @@ pipeline {
       steps {
         withCredentials([[$class: 'AmazonWebServicesCredentialsBinding', credentialsId: 'aws-creds']]) {
           sh '''
-            set -euo pipefail
-
-            if ! command -v kubectl >/dev/null 2>&1; then
-              curl -sSLo kubectl https://amazon-eks.s3.us-west-2.amazonaws.com/1.33.0/2024-09-10/bin/linux/amd64/kubectl
-              chmod +x kubectl
-              sudo mv kubectl /usr/local/bin/ 2>/dev/null || { mv kubectl ./kubectl; export PATH="$PWD:$PATH"; }
-            fi
-
             aws eks update-kubeconfig --name "${EKS_CLUSTER}" --region "${AWS_REGION}"
 
             # Ensure base resources exist (Namespace/Service/Deployment with dummy digest)
@@ -101,17 +90,5 @@ pipeline {
     }
 
   } // end stages
-
-  post {
-    success {
-      echo "Built, pushed, scanned and deployed ${IMAGE_REPO}@${IMAGE_DIGEST}"
-    }
-    failure {
-      echo "Pipeline failed — see logs above."
-    }
-    always {
-      sh 'docker logout 2>/dev/null || true'
-    }
-  }
 
 } // end pipeline
